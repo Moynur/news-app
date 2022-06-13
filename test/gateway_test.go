@@ -1,10 +1,9 @@
 //go:build integration
 
-package gateway_test
+package test_test
 
 import (
 	"encoding/json"
-	"github.com/go-resty/resty/v2"
 	handler "github.com/moynur/gateway/internal/transport/http"
 	"github.com/stretchr/testify/assert"
 	"log"

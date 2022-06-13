@@ -33,6 +33,8 @@ func main() {
 		log.Fatalf("err loading config %e", err)
 	}
 	svc := service.NewService(db, cfg.Client)
+	svc.LoadAndStoreArticles()
+	go svc.RefreshArticles(60)
 	client, _ := handler.NewHandler(svc)
 
 	r := mux.NewRouter()
