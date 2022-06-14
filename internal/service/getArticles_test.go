@@ -114,7 +114,7 @@ func Test_service_GetArticles(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			ms := store.NewMockStorer(ctrl)
-			s := service.NewService(ms, "someURL")
+			s := service.NewService(ms)
 			ms.EXPECT().GetRecordsAfterID(tt.args.req.Cursor, 3, store.Filters{
 				Title:         tt.args.req.Title,
 				Description:   "",
