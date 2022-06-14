@@ -1,100 +1,135 @@
 package service_test
 
 import (
-	"github.com/google/uuid"
+	"errors"
+	"fmt"
+	"log"
 	"testing"
+	"time"
 
 	"github.com/golang/mock/gomock"
-	"github.com/moynur/gateway/internal/helpers"
-	"github.com/moynur/gateway/internal/models"
-
-	"github.com/moynur/gateway/internal/service"
-	"github.com/moynur/gateway/internal/store"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/moynur/news-app/internal/models"
+	"github.com/moynur/news-app/internal/service"
+	"github.com/moynur/news-app/internal/store"
 )
 
-func TestService_Authorize(t *testing.T) {
-	t.Run("Should Fail Auth if Pan is special type which fails on Auth", func(t *testing.T) {
-		req := models.AuthRequest{
-			Card: models.Card{PAN: "4000000000000119"},
-		}
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-		mg := helpers.NewMockGenerator(ctrl)
-		ms := store.NewMockStorer(ctrl)
-		newService := service.NewService(ms, mg)
-		_, err := newService.Authorize(req)
-		assert.Error(t, err)
-	})
-
-	t.Run("Should Fail Auth if pan is invalid", func(t *testing.T) {
-		req := models.AuthRequest{
-			Card: models.Card{PAN: "0"},
-		}
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-		mg := helpers.NewMockGenerator(ctrl)
-		ms := store.NewMockStorer(ctrl)
-		newService := service.NewService(ms, mg)
-		_, err := newService.Authorize(req)
-		assert.Error(t, err)
-	})
-
-	t.Run("Should Fail Auth if pan is invalid", func(t *testing.T) {
-		req := models.AuthRequest{
-			Card: models.Card{PAN: "0"},
-		}
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-		mg := helpers.NewMockGenerator(ctrl)
-		ms := store.NewMockStorer(ctrl)
-		newService := service.NewService(ms, mg)
-		_, err := newService.Authorize(req)
-		assert.Error(t, err)
-	})
-
-	t.Run("Should throw unknown error when doing auth", func(t *testing.T) {
-		req := models.AuthRequest{
-			Card: models.Card{PAN: "059"},
-		}
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-		mg := helpers.NewMockGenerator(ctrl)
-		ms := store.NewMockStorer(ctrl)
-		newService := service.NewService(ms, mg)
-		mg.EXPECT().GenerateUUID().Return(uuid.NewUUID()).Times(2)
-		ms.EXPECT().Create(gomock.Any()).Return(models.ErrInvalidAmount)
-		_, err := newService.Authorize(req)
-		assert.Error(t, err)
-	})
-
-	t.Run("Should do auth successfully", func(t *testing.T) {
-		req := models.AuthRequest{
-			Card: models.Card{
-				Name:     "some name",
-				Postcode: "some postcode",
-				Expiry: models.Expiry{
-					Month: "08",
-					Year:  "2021",
+func Test_service_GetArticles(t *testing.T) {
+	type args struct {
+		req      models.GetArticlesRequest
+		resp     []store.NewsArticle
+		storeErr error
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    models.GetArticlesResponse
+		wantErr assert.ErrorAssertionFunc
+	}{
+		{
+			name: "correctly maps articles",
+			args: args{
+				req: models.GetArticlesRequest{
+					Cursor:   0,
+					Category: "",
+					Provider: "",
+					Title:    "",
 				},
-				PAN: "059",
-				CVV: 123,
+				resp: []store.NewsArticle{
+					{
+						ID:          0,
+						Title:       "someTitle",
+						Description: "someDescription",
+						Link:        "someLink",
+						Category:    "someCategory",
+						Thumbnail:   "someThumbnail",
+						CreatedAt:   time.Now(),
+					},
+					{
+						ID:          1,
+						Title:       "someTitle",
+						Description: "someDescription",
+						Link:        "someLink",
+						Category:    "someCategory",
+						Thumbnail:   "someThumbnail2",
+						CreatedAt:   time.Now(),
+					},
+				},
+				storeErr: nil,
 			},
-			Amount: models.Amount{
-				MajorUnits: 1000,
-				Currency:   "GBP",
+			want: models.GetArticlesResponse{
+				NextCursor: 1,
+				Articles: []models.Article{
+					{
+						ID:       0,
+						Title:    "someTitle",
+						Summary:  "someDescription",
+						ImageRef: "someThumbnail",
+						Link:     "someLink",
+					},
+					{
+						ID:       1,
+						Title:    "someTitle",
+						Summary:  "someDescription",
+						ImageRef: "someThumbnail2",
+						Link:     "someLink",
+					},
+				},
 			},
-		}
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-		mg := helpers.NewMockGenerator(ctrl)
-		ms := store.NewMockStorer(ctrl)
-		newService := service.NewService(ms, mg)
-		mg.EXPECT().GenerateUUID().Return(uuid.NewUUID()).Times(2)
-		mg.EXPECT().AsString(gomock.Any()).Return("a uuid as a string").Times(2)
-		ms.EXPECT().Create(gomock.Any()).Return(nil)
-		resp, err := newService.Authorize(req)
-		assert.NoError(t, err)
-		assert.Equal(t, models.Approved, resp.Response.Code)
-	})
+			wantErr: assert.NoError,
+		},
+		{
+			name: "returns error when no articles found",
+			args: args{
+				req: models.GetArticlesRequest{
+					Cursor:   0,
+					Category: "",
+					Provider: "",
+					Title:    "",
+				},
+				resp:     []store.NewsArticle{},
+				storeErr: nil,
+			},
+			want:    models.GetArticlesResponse{},
+			wantErr: assert.Error,
+		},
+		{
+			name: "returns error when store errors",
+			args: args{
+				req: models.GetArticlesRequest{
+					Cursor:   0,
+					Category: "",
+					Provider: "",
+					Title:    "",
+				},
+				resp:     []store.NewsArticle{},
+				storeErr: errors.New("cant connect to db"),
+			},
+			want:    models.GetArticlesResponse{},
+			wantErr: assert.Error,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			ms := store.NewMockStorer(ctrl)
+			s := service.NewService(ms, "someURL")
+			ms.EXPECT().GetRecordsAfterID(tt.args.req.Cursor, 3, store.Filters{
+				Title:         tt.args.req.Title,
+				Description:   "",
+				Link:          "",
+				Category:      tt.args.req.Category,
+				CreatedAfter:  nil,
+				CreatedBefore: nil,
+			}).Return(tt.args.resp, tt.args.storeErr)
+			got, err := s.GetArticles(tt.args.req)
+			log.Println("got smthn", got)
+			if !tt.wantErr(t, err, fmt.Sprintf("GetArticles(%v)", tt.args.req)) {
+				return
+			}
+			log.Println("check this")
+			assert.Equalf(t, tt.want, got, "GetArticles(%v)", tt.args.req)
+		})
+	}
 }

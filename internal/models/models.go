@@ -4,6 +4,7 @@ type GetArticlesRequest struct {
 	Cursor   int
 	Category string
 	Provider string
+	Title    string
 }
 
 type GetArticlesResponse struct {
@@ -12,7 +13,9 @@ type GetArticlesResponse struct {
 }
 
 type Article struct {
+	ID       int
 	Title    string
 	Summary  string
 	ImageRef string
+	Link     string
 }

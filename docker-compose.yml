@@ -14,7 +14,7 @@ services:
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
   app:
     build: .
-    container_name: api_gateway
+    container_name: api_news_app
     environment:
       - DB_USERNAME="postgres"
       - DB_PASSWORD="postgres"

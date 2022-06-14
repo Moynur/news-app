@@ -3,39 +3,35 @@ package handler_test
 import (
 	"bytes"
 	"encoding/json"
-	"github.com/golang/mock/gomock"
-	"github.com/google/uuid"
-	"github.com/moynur/gateway/internal/models"
-	"github.com/moynur/gateway/internal/service"
-	handler "github.com/moynur/gateway/internal/transport/http"
-	"github.com/stretchr/testify/assert"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/golang/mock/gomock"
+	"github.com/stretchr/testify/assert"
+
+	"github.com/moynur/news-app/internal/models"
+	"github.com/moynur/news-app/internal/service"
+	handler "github.com/moynur/news-app/internal/transport/http"
 )
 
 const (
-	AuthUrl    = "/authorize"
-	CaptureUrl = "/capture"
-	RefundUrl  = "/refund"
-	VoidUrl    = "/void"
+	loadURL = "/loadArticles"
 )
 
 func TestHandler_NewHandler(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
-
 	ms := service.NewMockService(ctrl)
-
 	h, err := handler.NewHandler(ms)
 	assert.NoError(t, err)
-
 	assert.NotNil(t, h)
 
 }
 
-func TestHandler_AuthorizeTransaction(t *testing.T) {
-	t.Run("should return bad request when field has invalid type", func(t *testing.T) {
+func TestHandler_LoadArticles(t *testing.T) {
+	t.Run("should return some articles", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
@@ -46,81 +42,78 @@ func TestHandler_AuthorizeTransaction(t *testing.T) {
 
 		assert.NotNil(t, h)
 
-		handlerAuthReq := []byte(`{"name":false}`)
-
-		capReq, err := json.Marshal(handlerAuthReq)
-		assert.NoError(t, err)
-
-		w := httptest.NewRecorder()
-		r := httptest.NewRequest(http.MethodPost, AuthUrl, bytes.NewReader(capReq))
-
-		h.AuthorizeTransaction(w, r)
-		resp := w.Result()
-		assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
-	})
-
-	t.Run("should return approved", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-
-		ms := service.NewMockService(ctrl)
-
-		h, err := handler.NewHandler(ms)
-		assert.NoError(t, err)
-
-		assert.NotNil(t, h)
-
-		handlerAuthReq := handler.AuthRequest{
-			ExpiryMonth: "month",
-			ExpiryYear:  "year",
-			Name:        "name",
-			Postcode:    "postcode",
-			CVV:         123,
-			PAN:         "059",
-			MajorUnits:  1000,
-			Currency:    "GBP",
+		request := handler.LoadArticlesReq{
+			Cursor:   0,
+			Category: "some category",
+			Provider: "some provider",
+			Title:    "some title",
 		}
 
-		authReqMarshalled, err := json.Marshal(handlerAuthReq)
+		reqMarshalled, err := json.Marshal(request)
 		assert.NoError(t, err)
 
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest(http.MethodPost, AuthUrl, bytes.NewReader(authReqMarshalled))
+		r := httptest.NewRequest(http.MethodGet, loadURL, bytes.NewReader(reqMarshalled))
 
-		expectedServerResp := models.AuthResponse{
-			TransactionId: "TransactionUUID",
-			OperationId:   "OperationUUID",
-			Response:      models.Response{Code: models.Approved},
-			AmountAvailable: models.Amount{
-				MajorUnits: 1000,
-				Currency:   "GBP",
+		expectedServerReq := models.GetArticlesRequest{
+			Cursor:   request.Cursor,
+			Category: request.Category,
+			Provider: request.Provider,
+			Title:    request.Title,
+		}
+
+		expectedServerResp := models.GetArticlesResponse{
+			NextCursor: 0,
+			Articles: []models.Article{
+				{
+					ID:       0,
+					Title:    "some title",
+					Summary:  "some summary",
+					ImageRef: "some image url",
+					Link:     "some page url",
+				},
+				{
+					ID:       1,
+					Title:    "some title",
+					Summary:  "some summary",
+					ImageRef: "some image url",
+					Link:     "some page url",
+				},
 			},
 		}
 
-		ms.EXPECT().Authorize(gomock.Any()).Return(expectedServerResp, nil)
+		ms.EXPECT().GetArticles(expectedServerReq).Return(expectedServerResp, nil)
 
-		h.AuthorizeTransaction(w, r)
+		h.LoadArticles(w, r)
 		resp := w.Result()
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 		err = resp.Body.Close()
 		assert.NoError(t, err)
 
-		expected := handler.AuthResponse{
-			MajorUnits:    1000,
-			Currency:      expectedServerResp.AmountAvailable.Currency,
-			TransactionId: expectedServerResp.TransactionId,
-			OperationId:   expectedServerResp.OperationId,
-			ResponseCode:  expectedServerResp.Response.AsInt(),
+		expected := handler.LoadArticlesResp{
+			NextCursor: 0, // the handler doesn't handle the cursor value just passes back what the service provides
+			Articles: []handler.Article{
+				{
+					Title:    "some title",
+					Summary:  "some summary",
+					ImageRef: "some image url",
+					Link:     "some page url",
+				},
+				{
+					Title:    "some title",
+					Summary:  "some summary",
+					ImageRef: "some image url",
+					Link:     "some page url",
+				},
+			},
 		}
 
-		var out handler.AuthResponse
+		var out handler.LoadArticlesResp
 		assert.NoError(t, json.NewDecoder(resp.Body).Decode(&out))
 		assert.Equal(t, expected, out)
 	})
-}
 
-func TestHandler_CaptureTransaction(t *testing.T) {
-	t.Run("should return bad request when field has invalid type", func(t *testing.T) {
+	t.Run("should handle an error when not found", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
@@ -131,322 +124,110 @@ func TestHandler_CaptureTransaction(t *testing.T) {
 
 		assert.NotNil(t, h)
 
-		handlerCapReq := []byte(`{"transactionId":false}`)
+		request := handler.LoadArticlesReq{
+			Cursor:   0,
+			Category: "some category",
+			Provider: "some provider",
+			Title:    "some title",
+		}
 
-		capReq, err := json.Marshal(handlerCapReq)
+		reqMarshalled, err := json.Marshal(request)
 		assert.NoError(t, err)
 
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest(http.MethodPost, CaptureUrl, bytes.NewReader(capReq))
+		r := httptest.NewRequest(http.MethodGet, loadURL, bytes.NewReader(reqMarshalled))
 
-		h.CaptureTransaction(w, r)
+		expectedServerReq := models.GetArticlesRequest{
+			Cursor:   request.Cursor,
+			Category: request.Category,
+			Provider: request.Provider,
+			Title:    request.Title,
+		}
+
+		expectedServerResp := models.GetArticlesResponse{}
+
+		ms.EXPECT().GetArticles(expectedServerReq).Return(expectedServerResp, service.ErrNotFound)
+
+		h.LoadArticles(w, r)
+		resp := w.Result()
+		assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+	})
+
+	t.Run("should handle a generic error", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		ms := service.NewMockService(ctrl)
+
+		h, err := handler.NewHandler(ms)
+		assert.NoError(t, err)
+
+		assert.NotNil(t, h)
+
+		request := handler.LoadArticlesReq{
+			Cursor:   0,
+			Category: "some category",
+			Provider: "some provider",
+			Title:    "some title",
+		}
+
+		reqMarshalled, err := json.Marshal(request)
+		assert.NoError(t, err)
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(http.MethodGet, loadURL, bytes.NewReader(reqMarshalled))
+
+		expectedServerReq := models.GetArticlesRequest{
+			Cursor:   request.Cursor,
+			Category: request.Category,
+			Provider: request.Provider,
+			Title:    request.Title,
+		}
+
+		expectedServerResp := models.GetArticlesResponse{}
+
+		ms.EXPECT().GetArticles(expectedServerReq).Return(expectedServerResp, errors.New("something failed"))
+
+		h.LoadArticles(w, r)
+		resp := w.Result()
+		assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+	})
+
+	t.Run("should return error when request is bad", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		ms := service.NewMockService(ctrl)
+
+		h, err := handler.NewHandler(ms)
+		assert.NoError(t, err)
+
+		assert.NotNil(t, h)
+
+		request := handler.LoadArticlesResp{
+			NextCursor: 0,
+			Articles: []handler.Article{
+				{
+					Title:    "",
+					Summary:  "",
+					ImageRef: "",
+					Link:     "",
+				},
+			},
+		}
+
+		reqMarshalled, err := json.Marshal(request)
+		assert.NoError(t, err)
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(http.MethodGet, loadURL, bytes.NewReader(reqMarshalled))
+
+		ms.EXPECT().GetArticles(gomock.Any()).Times(0)
+
+		h.LoadArticles(w, r)
 		resp := w.Result()
 		assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
-	})
-
-	t.Run("should return 422 when uuid is invalid", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-
-		ms := service.NewMockService(ctrl)
-
-		h, err := handler.NewHandler(ms)
+		err = resp.Body.Close()
 		assert.NoError(t, err)
-
-		assert.NotNil(t, h)
-
-		handlerCapReq := handler.CaptureRequest{
-			MajorUnits:    1000,
-			Currency:      "GBP",
-			TransactionId: "TxnId which is not uuid",
-		}
-
-		capReq, err := json.Marshal(handlerCapReq)
-		assert.NoError(t, err)
-
-		w := httptest.NewRecorder()
-		r := httptest.NewRequest(http.MethodPost, CaptureUrl, bytes.NewReader(capReq))
-
-		h.CaptureTransaction(w, r)
-		resp := w.Result()
-		assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
-
-	})
-
-	t.Run("it should do a capture successfully", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-
-		ms := service.NewMockService(ctrl)
-
-		h, err := handler.NewHandler(ms)
-		assert.NoError(t, err)
-
-		assert.NotNil(t, h)
-
-		handlerCapReq := handler.CaptureRequest{
-			MajorUnits:    1000,
-			Currency:      "GBP",
-			TransactionId: uuid.NewString(),
-		}
-
-		capReq, err := json.Marshal(handlerCapReq)
-		assert.NoError(t, err)
-
-		w := httptest.NewRecorder()
-		r := httptest.NewRequest(http.MethodPost, CaptureUrl, bytes.NewReader(capReq))
-
-		newUUID, err := uuid.NewUUID()
-		assert.NoError(t, err)
-
-		response := models.CaptureResponse{
-			TransactionId: newUUID,
-			OperationId:   newUUID,
-			AmountCharged: models.Amount{
-				MajorUnits: 1000,
-				Currency:   "GBP",
-			},
-			AmountAvailable: models.Amount{
-				MajorUnits: 0,
-				Currency:   "GBP",
-			},
-			Response: models.Response{
-				Code: 1000,
-			},
-		}
-
-		ms.EXPECT().Capture(gomock.Any()).Return(response, nil)
-
-		expected := handler.CaptureResponse{
-			MajorUnits:       1000,
-			AvailableBalance: 0,
-			Currency:         "GBP",
-			TransactionId:    newUUID.String(),
-			OperationId:      newUUID.String(),
-			ResponseCode:     1000,
-		}
-
-		h.CaptureTransaction(w, r)
-		resp := w.Result()
-
-		var actual handler.CaptureResponse
-		err = json.NewDecoder(resp.Body).Decode(&actual)
-
-		assert.Equal(t, http.StatusOK, resp.StatusCode)
-		assert.Equal(t, expected, actual)
-	})
-}
-
-func TestHandler_RefundTransaction(t *testing.T) {
-	t.Run("should return bad request when field has invalid type", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-
-		ms := service.NewMockService(ctrl)
-
-		h, err := handler.NewHandler(ms)
-		assert.NoError(t, err)
-
-		assert.NotNil(t, h)
-
-		handlerRefundRequest := []byte(`{"transactionId":false}`)
-
-		capReq, err := json.Marshal(handlerRefundRequest)
-		assert.NoError(t, err)
-
-		w := httptest.NewRecorder()
-		r := httptest.NewRequest(http.MethodPost, RefundUrl, bytes.NewReader(capReq))
-
-		h.RefundTransaction(w, r)
-		resp := w.Result()
-		assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
-	})
-
-	t.Run("should return 422 when uuid is invalid", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-
-		ms := service.NewMockService(ctrl)
-
-		h, err := handler.NewHandler(ms)
-		assert.NoError(t, err)
-
-		assert.NotNil(t, h)
-
-		handlerCapReq := handler.RefundRequest{
-			TransactionId: "TxnId which is not uuid",
-		}
-
-		capReq, err := json.Marshal(handlerCapReq)
-		assert.NoError(t, err)
-
-		w := httptest.NewRecorder()
-		r := httptest.NewRequest(http.MethodPost, RefundUrl, bytes.NewReader(capReq))
-
-		h.RefundTransaction(w, r)
-		resp := w.Result()
-		assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
-
-	})
-
-	t.Run("it should do a refund successfully", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-
-		ms := service.NewMockService(ctrl)
-
-		h, err := handler.NewHandler(ms)
-		assert.NoError(t, err)
-		assert.NotNil(t, h)
-
-		newUUID, err := uuid.NewUUID()
-		assert.NoError(t, err)
-
-		handlerRefundRequest := handler.RefundRequest{
-			MajorUnits:    1000,
-			Currency:      "GBP",
-			TransactionId: newUUID.String(),
-		}
-
-		refundReq, err := json.Marshal(handlerRefundRequest)
-		assert.NoError(t, err)
-
-		w := httptest.NewRecorder()
-		r := httptest.NewRequest(http.MethodPost, RefundUrl, bytes.NewReader(refundReq))
-
-		response := models.RefundResponse{
-			TransactionId: newUUID,
-			OperationId:   newUUID,
-			Amount: models.Amount{
-				MajorUnits: 1000,
-				Currency:   "GBP",
-			},
-			AmountAvailable: models.Amount{
-				MajorUnits: 0,
-				Currency:   "GBP",
-			},
-			Response: models.Response{
-				Code: 1000,
-			},
-		}
-
-		ms.EXPECT().Refund(gomock.Any()).Return(response, nil)
-
-		expected := handler.RefundResponse{
-			MajorUnits:       1000,
-			AvailableBalance: 0,
-			Currency:         "GBP",
-			TransactionId:    newUUID.String(),
-			OperationId:      newUUID.String(),
-			ResponseCode:     1000,
-		}
-
-		h.RefundTransaction(w, r)
-		resp := w.Result()
-
-		var actual handler.RefundResponse
-		err = json.NewDecoder(resp.Body).Decode(&actual)
-
-		assert.Equal(t, http.StatusOK, resp.StatusCode)
-		assert.Equal(t, expected, actual)
-	})
-}
-
-func TestHandler_VoidTransaction(t *testing.T) {
-	t.Run("should return bad request when field has invalid type", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-
-		ms := service.NewMockService(ctrl)
-
-		h, err := handler.NewHandler(ms)
-		assert.NoError(t, err)
-
-		assert.NotNil(t, h)
-
-		handlerVoidReq := []byte(`{"transactionId":false}`)
-
-		voidReq, err := json.Marshal(handlerVoidReq)
-		assert.NoError(t, err)
-
-		w := httptest.NewRecorder()
-		r := httptest.NewRequest(http.MethodPost, VoidUrl, bytes.NewReader(voidReq))
-
-		h.VoidTransaction(w, r)
-		resp := w.Result()
-		assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
-	})
-
-	t.Run("should return 422 when uuid is invalid", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-
-		ms := service.NewMockService(ctrl)
-
-		h, err := handler.NewHandler(ms)
-		assert.NoError(t, err)
-
-		assert.NotNil(t, h)
-
-		handlerVoidReq := handler.VoidRequest{TransactionId: "TxnId which is not uuid"}
-
-		voidReq, err := json.Marshal(handlerVoidReq)
-		assert.NoError(t, err)
-
-		w := httptest.NewRecorder()
-		r := httptest.NewRequest(http.MethodPost, VoidUrl, bytes.NewReader(voidReq))
-
-		h.VoidTransaction(w, r)
-		resp := w.Result()
-		assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
-
-	})
-
-	t.Run("it should do a void successfully", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-
-		ms := service.NewMockService(ctrl)
-
-		h, err := handler.NewHandler(ms)
-		assert.NoError(t, err)
-
-		assert.NotNil(t, h)
-
-		handlerCapReq := handler.VoidRequest{TransactionId: uuid.NewString()}
-
-		capReq, err := json.Marshal(handlerCapReq)
-		assert.NoError(t, err)
-
-		w := httptest.NewRecorder()
-		r := httptest.NewRequest(http.MethodPost, VoidUrl, bytes.NewReader(capReq))
-
-		newUUID, err := uuid.NewUUID()
-		assert.NoError(t, err)
-
-		response := models.AuthVoidResponse{
-			TransactionId: newUUID,
-			OperationId:   newUUID,
-			Response: models.Response{
-				Code: 1000,
-			},
-		}
-
-		ms.EXPECT().Void(gomock.Any()).Return(response, nil)
-
-		expected := handler.VoidResponse{
-			TransactionId: newUUID.String(),
-			OperationId:   newUUID.String(),
-			ResponseCode:  1000,
-		}
-
-		h.VoidTransaction(w, r)
-		resp := w.Result()
-
-		var actual handler.VoidResponse
-		err = json.NewDecoder(resp.Body).Decode(&actual)
-
-		assert.Equal(t, http.StatusOK, resp.StatusCode)
-		assert.Equal(t, expected, actual)
 	})
 }

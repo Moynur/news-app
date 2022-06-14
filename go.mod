@@ -1,4 +1,4 @@
-module github.com/moynur/gateway
+module github.com/moynur/news-app
 
 go 1.17
 

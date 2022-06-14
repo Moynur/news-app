@@ -1,14 +1,15 @@
 package main
 
 import (
-	"github.com/moynur/gateway/internal/config"
+	"github.com/moynur/news-app/internal/config"
+	feeder "github.com/moynur/news-app/internal/feed"
 	"log"
 	"net/http"
 	"time"
 
-	"github.com/moynur/gateway/internal/service"
-	"github.com/moynur/gateway/internal/store"
-	"github.com/moynur/gateway/internal/transport/http"
+	"github.com/moynur/news-app/internal/service"
+	"github.com/moynur/news-app/internal/store"
+	"github.com/moynur/news-app/internal/transport/http"
 
 	"github.com/gorilla/mux"
 )
@@ -32,9 +33,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("err loading config %e", err)
 	}
-	svc := service.NewService(db, cfg.Client)
-	svc.LoadAndStoreArticles()
-	go svc.RefreshArticles(60)
+	svc := service.NewService(db)
+	feeders := feeder.NewFeeder(db, cfg.Client)
+	feeders.LoadAndStoreArticles()
+	go feeders.RefreshArticles(60)
 	client, _ := handler.NewHandler(svc)
 
 	r := mux.NewRouter()

@@ -2,8 +2,8 @@
 package service
 
 import (
-	"github.com/moynur/gateway/internal/models"
-	"github.com/moynur/gateway/internal/store"
+	"github.com/moynur/news-app/internal/models"
+	"github.com/moynur/news-app/internal/store"
 )
 
 type Service interface {
@@ -15,9 +15,8 @@ type service struct {
 	rssFeedUrl string
 }
 
-func NewService(db store.Storer, rssFeedUrl string) *service {
+func NewService(db store.Storer) *service {
 	return &service{
-		store:      db,
-		rssFeedUrl: rssFeedUrl,
+		store: db,
 	}
 }

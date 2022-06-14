@@ -4,10 +4,10 @@ package store
 import (
 	"errors"
 	"fmt"
-	"github.com/jackc/pgconn"
 	"log"
 	"time"
 
+	"github.com/jackc/pgconn"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -16,8 +16,7 @@ const ErrDuplicateKey = "23505"
 
 type Storer interface {
 	CreateArticleIfNotExists(request NewsArticle) error
-	GetArticleByURL(url string) (NewsArticle, error)
-	GetRecordsAfterID(ID string, numberOfRecords int, filters Filters) ([]NewsArticle, error)
+	GetRecordsAfterID(ID int, numberOfRecords int, filters Filters) ([]NewsArticle, error)
 }
 
 type Store struct {
@@ -35,12 +34,12 @@ type NewsArticle struct {
 }
 
 type Filters struct {
-	Title       string
-	Description string
-	Link        string `gorm:"unique_index:idx_link"`
-	Category    string
-	Thumbnail   string
-	CreatedAt   time.Time
+	Title         string
+	Description   string
+	Link          string `gorm:"unique_index:idx_link"`
+	Category      string
+	CreatedAfter  *time.Time
+	CreatedBefore *time.Time
 }
 
 func NewStore() (*Store, error) {
@@ -72,16 +71,39 @@ func (s *Store) CreateArticleIfNotExists(request NewsArticle) error {
 	return nil
 }
 
-func (s *Store) GetRecordsAfterID(ID string, numberOfRecords int, filters Filters) ([]NewsArticle, error) {
-	log.Println("get store request", ID, numberOfRecords)
+// GetRecordsAfterID returns all matching records which have an ID larger than the one provided, within the limit
+// that pass the filters, it will also order them with the ID ascending so the highest ID will be last in the array
+func (s *Store) GetRecordsAfterID(ID int, numberOfRecords int, filters Filters) ([]NewsArticle, error) {
+	log.Println("get store request", ID, numberOfRecords, filters)
 	var FindResult []NewsArticle
-	resp := s.db.Where("ID > ?", ID).Where(NewsArticle{
-		Title:       filters.Title,
-		Description: filters.Description,
-		Link:        filters.Link,
-		Category:    filters.Category,
-		Thumbnail:   filters.Thumbnail,
-	}).Order("ID asc").Limit(numberOfRecords).Find(&FindResult)
+	resp := s.db.Where("ID > ?", ID).Order("ID asc").Limit(numberOfRecords)
+
+	if filters.Title != "" {
+		log.Println("title filter")
+		resp = resp.Where("title LIKE ?", filters.Title)
+	}
+
+	if filters.Description != "" {
+		resp = resp.Where("description LIKE ?", filters.Title)
+	}
+
+	if filters.Link != "" {
+		resp = resp.Where("link LIKE ?", filters.Title)
+	}
+
+	if filters.Category != "" {
+		resp = resp.Where("category = ?", filters.Title)
+	}
+
+	if filters.CreatedAfter != nil {
+		resp = resp.Where("created_at > ?", filters.CreatedAfter)
+	}
+
+	if filters.CreatedAfter != nil {
+		resp = resp.Where("created_at < ?", filters.CreatedBefore)
+	}
+
+	resp = resp.Find(&FindResult)
 	if resp.Error != nil {
 		return []NewsArticle{}, fmt.Errorf("failed to get record %e", resp.Error)
 	}
@@ -89,13 +111,14 @@ func (s *Store) GetRecordsAfterID(ID string, numberOfRecords int, filters Filter
 	return FindResult, nil
 }
 
-func (s *Store) GetArticleByURL(url string) (NewsArticle, error) {
-	log.Println("get store request by url", url)
-	var FindResult NewsArticle
-	resp := s.db.Where(NewsArticle{Link: url}).First(&FindResult)
-	if resp.Error != nil {
-		return NewsArticle{}, fmt.Errorf("failed to get record %e", resp.Error)
-	}
-	log.Println("find result", FindResult)
-	return FindResult, nil
-}
+// Could use this method to fetch data around a singular page which could later be passed to a template to return HTML
+//func (s *Store) GetArticleByURL(url string) (NewsArticle, error) {
+//	log.Println("get store request by url", url)
+//	var FindResult NewsArticle
+//	resp := s.db.Where(NewsArticle{Link: url}).First(&FindResult)
+//	if resp.Error != nil {
+//		return NewsArticle{}, fmt.Errorf("failed to get record %e", resp.Error)
+//	}
+//	log.Println("find result", FindResult)
+//	return FindResult, nil
+//}

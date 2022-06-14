@@ -1,65 +1,46 @@
 package service
 
 import (
+	"errors"
 	"log"
-	"time"
 
-	"github.com/mmcdole/gofeed"
+	"github.com/moynur/news-app/internal/models"
+	"github.com/moynur/news-app/internal/store"
+)
 
-	"github.com/moynur/gateway/internal/models"
-	"github.com/moynur/gateway/internal/store"
+var (
+	ErrNotFound = errors.New("no articles found matching criteria")
 )
 
 func (s *service) GetArticles(req models.GetArticlesRequest) (models.GetArticlesResponse, error) {
 	log.Println("reached service")
-	return models.GetArticlesResponse{
-		NextCursor: 0,
-		Articles:   nil,
-	}, nil
-}
-
-func isNotValid(article *gofeed.Item) bool {
-	return article.GUID == "" || article.Title == ""
-}
-
-func (s *service) RefreshArticles(rate int) {
-	ticker := time.NewTicker(time.Second * time.Duration(rate)).C
-	for {
-		select {
-		case <-ticker:
-			log.Println("ticking!")
-			s.LoadAndStoreArticles()
-		}
-	}
-}
-
-func (s *service) LoadAndStoreArticles() {
-	fp := gofeed.NewParser()
-	feed, err := fp.ParseURL(s.rssFeedUrl)
+	var response models.GetArticlesResponse
+	// number of records could be a config or a parameter from the client request
+	articles, err := s.store.GetRecordsAfterID(req.Cursor, 3, store.Filters{
+		// haven't implemented others but this is to showcase how the filters work
+		Title:         req.Title,
+		Description:   "",
+		Link:          "",
+		Category:      req.Category,
+		CreatedAfter:  nil,
+		CreatedBefore: nil,
+	})
 	if err != nil {
-		log.Printf("unable to load articles %e", err)
+		return response, err
 	}
-	for _, article := range feed.Items {
-		if isNotValid(article) {
-			continue
-		}
-		log.Println("something 2")
-		if article.Image == nil || article.Image.URL == "" {
-			log.Println("something 3")
-			article.Image = &gofeed.Image{
-				URL: "https://pbs.twimg.com/profile_images/1140654461603287040/bUUAgDF6_400x400.jpg",
-			}
-		}
-		log.Println("something 4", article)
-		err := s.store.CreateArticleIfNotExists(store.NewsArticle{
-			Title:       article.Title,
-			Description: article.Description,
-			Link:        article.GUID,
-			Thumbnail:   article.Image.URL,
-			CreatedAt:   time.Now(),
+	if len(articles) == 0 {
+		return response, ErrNotFound
+	}
+	for _, article := range articles {
+		response.Articles = append(response.Articles, models.Article{
+			ID:       int(article.ID),
+			Title:    article.Title,
+			Summary:  article.Description,
+			ImageRef: article.Thumbnail,
+			Link:     article.Link,
 		})
-		if err != nil {
-			log.Println("error creating an article", err)
-		}
 	}
+	response.NextCursor = response.Articles[len(response.Articles)-1].ID
+	log.Println("response", response.NextCursor)
+	return response, nil
 }

@@ -8,25 +8,27 @@ import (
 
 	"github.com/gorilla/mux"
 
-	"github.com/moynur/gateway/internal/models"
-	"github.com/moynur/gateway/internal/service"
+	"github.com/moynur/news-app/internal/models"
+	"github.com/moynur/news-app/internal/service"
 )
 
-type loadArticlesReq struct {
-	Cursor   int
-	Category string
-	Provider string
+type LoadArticlesReq struct {
+	Cursor   int    `json:"cursor,omitempty"`
+	Category string `json:"category" json:"category,omitempty"`
+	Provider string `json:"provider,omitempty"`
+	Title    string `json:"title,omitempty"`
 }
 
 type Article struct {
-	Title    string
-	Summary  string
-	ImageRef string
+	Title    string `json:"title,omitempty"`
+	Summary  string `json:"summary,omitempty"`
+	ImageRef string `json:"image_ref,omitempty"`
+	Link     string `json:"link,omitempty"`
 }
 
-type loadArticlesResp struct {
-	NextCursor int
-	Articles   []Article
+type LoadArticlesResp struct {
+	NextCursor int       `json:"next_cursor,omitempty"`
+	Articles   []Article `json:"articles,omitempty"`
 }
 
 type Handler struct {
@@ -49,23 +51,35 @@ func (h *Handler) LoadArticles(w http.ResponseWriter, r *http.Request) {
 	NewDecoder := json.NewDecoder(r.Body)
 	NewDecoder.DisallowUnknownFields()
 
-	var newAuthRequest loadArticlesReq
+	var newAuthRequest LoadArticlesReq
+	var response LoadArticlesResp
 	err := NewDecoder.Decode(&newAuthRequest)
 	if err != nil {
 		log.Println("\n Unable to decode req", err)
 		errorBadRequest(w, "unable to decode request")
 		return
 	}
-	request := transformAuth(newAuthRequest)
-
-	resp, err := h.service.GetArticles(request)
+	resp, err := h.service.GetArticles(mapRequest(newAuthRequest))
 	if err != nil {
-		log.Println("cant auth", err)
-		errorUnknownFailure(w, "failed to auth")
+		switch err {
+		case service.ErrNotFound:
+			errorNotFound(w, "no articles found")
+		default:
+			errorUnknownFailure(w, "failed to fetch articles")
+		}
 		return
 	}
 	log.Println(resp)
-	err = json.NewEncoder(w).Encode("handlerResp")
+	response.NextCursor = resp.NextCursor
+	for _, article := range resp.Articles {
+		response.Articles = append(response.Articles, Article{
+			Title:    article.Title,
+			Summary:  article.Summary,
+			ImageRef: article.ImageRef,
+			Link:     article.Link,
+		})
+	}
+	err = json.NewEncoder(w).Encode(response)
 	if err != nil {
 		log.Println("failure to write resp", err)
 		errorUnknownFailure(w, "unknown failure")
@@ -73,12 +87,23 @@ func (h *Handler) LoadArticles(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func transformAuth(req loadArticlesReq) models.GetArticlesRequest {
+func (h *Handler) GetArticle(w http.ResponseWriter, r *http.Request) {
+	// would be responsible for taking a single article by URL/ID and fetching from db
+	// then converting the service into a HTML template to consume
+	//h.service.Getpege() for example
+}
+
+func mapRequest(req LoadArticlesReq) models.GetArticlesRequest {
 	return models.GetArticlesRequest{
 		Cursor:   req.Cursor,
 		Category: req.Category,
 		Provider: req.Provider,
+		Title:    req.Title,
 	}
+}
+
+func errorNotFound(w http.ResponseWriter, message string) {
+	writeError(w, message, http.StatusNotFound)
 }
 
 func errorUnknownFailure(w http.ResponseWriter, message string) {

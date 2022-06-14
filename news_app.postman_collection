@@ -1,0 +1,41 @@
+{
+	"info": {
+		"_postman_id": "35c7bc56-6771-4ee3-b18e-92eff23d36d8",
+		"name": "News App",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "10697881"
+	},
+	"item": [
+		{
+			"name": "Load Page",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"method": "GET",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "\r\n{\r\n\r\n}\r\n",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/loadArticles",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"loadArticles"
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}
