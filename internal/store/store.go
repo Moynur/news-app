@@ -79,7 +79,6 @@ func (s *Store) GetRecordsAfterID(ID int, numberOfRecords int, filters Filters) 
 	resp := s.db.Where("ID > ?", ID).Order("ID asc").Limit(numberOfRecords)
 
 	if filters.Title != "" {
-		log.Println("title filter")
 		resp = resp.Where("title LIKE ?", filters.Title)
 	}
 

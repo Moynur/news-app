@@ -46,7 +46,6 @@ func (h *Handler) ApplyRoutes(r *mux.Router) {
 }
 
 func (h *Handler) LoadArticles(w http.ResponseWriter, r *http.Request) {
-	log.Println("something")
 	w.Header().Set("Content-Type", "application/json")
 	NewDecoder := json.NewDecoder(r.Body)
 	NewDecoder.DisallowUnknownFields()

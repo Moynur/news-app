@@ -47,9 +47,7 @@ func (s *feeder) LoadAndStoreArticles() {
 		if isNotValid(article) {
 			continue
 		}
-		log.Println("something 2")
 		if article.Image == nil || article.Image.URL == "" {
-			log.Println("something 3")
 			article.Image = &gofeed.Image{
 				URL: "https://pbs.twimg.com/profile_images/1140654461603287040/bUUAgDF6_400x400.jpg",
 			}

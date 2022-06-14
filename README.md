@@ -15,6 +15,7 @@ App for retrieving news feeds
 - Metrics
 - Audit table/log of client requests
 - database credentials could be config
+- some loggers are redundant, for large scale they can be removed but good to have when first building a service
 - if this had to be done with standard HTTP using a tool like PACT to ensure there's a contract would be nice for keeping the client and server in sync however for mobile app something like graphQL seems like it would fit good here
 - relying on duplicate key error could be handled more gracefully
 - this single endpoint could technically service all needs, but it would put a lot more burden on the client (mobile app) to do some heavier lifting providing less info and then having another endpoint for a specific article would be nicer
