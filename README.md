@@ -15,6 +15,7 @@ App for retrieving news feeds
 - Metrics
 - Audit table/log of client requests
 - database credentials could be config
+- if this had to be done with standard HTTP using a tool like PACT to ensure there's a contract would be nice for keeping the client and server in sync however for mobile app something like graphQL seems like it would fit good here
 - relying on duplicate key error could be handled more gracefully
 - this single endpoint could technically service all needs, but it would put a lot more burden on the client (mobile app) to do some heavier lifting providing less info and then having another endpoint for a specific article would be nicer
 - Service could be split in 2, one handling sourcing data and another to handle client requests for this information by requesting from sourcing service.
@@ -29,7 +30,7 @@ Unit tests: go test ./... \
 Integration tests: go test -tags=integration ./...
 
 ### Local Testing 
-You can send a CURL request like 
+You can send a CURL request like below or check the Postman collection and add the optional filters to the body
 ```
 curl --location --request GET 'http://localhost:8080/loadArticles' \
 --header 'Content-Type: application/json' \
